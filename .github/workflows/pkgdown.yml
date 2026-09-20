@@ -6,6 +6,17 @@
 #   jobs:
 #     pkgdown:
 #       uses: viniciusoike/.github/.github/workflows/pkgdown.yml@main
+#       permissions:
+#         contents: read
+#         pages: write
+#         id-token: write
+#   #
+#   # The calling job MUST grant pages/id-token explicitly: reusable workflows
+#   # cannot elevate GITHUB_TOKEN permissions beyond what the caller grants, and
+#   # any elevation attempt inside this file makes the run fail at startup with
+#   # "The nested job 'deploy' is requesting 'pages: write, id-token: write',
+#   # but is only allowed ...". A workflow-level `permissions:` in the caller
+#   # (e.g. read-all) does NOT work — only job-level grants do.
 #
 # Build and deploy are two jobs on purpose. A job-level `environment:` binds
 # before any step runs and is not affected by step-level `if:`, so a combined
@@ -32,7 +43,10 @@ on:
 
 name: pkgdown
 
-permissions: read-all
+# NOTE: no workflow-level `permissions:` here — a called workflow may only
+# downgrade (not elevate) what the caller grants, and a top-level block here
+# would be validated against the caller's grant and crash the run. Each job
+# below declares exactly what it needs.
 
 jobs:
   build:
