@@ -30,14 +30,24 @@ on:
 
 name: pkgdown
 
-permissions: read-all
-
 jobs:
   pkgdown:
     uses: viniciusoike/.github/.github/workflows/pkgdown.yml@main
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     with:
       internal_md_docs: "CLAUDE.md AGENTS.md"   # optional; this is the default
 ```
+
+**Do not use a workflow-level `permissions:` block** (e.g. `read-all`) in the
+caller. Reusable workflows can only keep or narrow the GITHUB_TOKEN permissions
+the caller grants them — never elevate — and only **job-level** grants count.
+With `read-all` at the workflow level the internal `deploy` job is capped to
+read and the run fails at startup with
+"The nested job 'deploy' is requesting 'pages: write, id-token: write',
+but is only allowed 'pages: read, id-token: read'".
 
 The triggering events must stay in the calling workflow — `workflow_call` can
 only be armed once and reusable workflows cannot define `on.push` triggers
