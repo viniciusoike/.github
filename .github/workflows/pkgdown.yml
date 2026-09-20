@@ -1,0 +1,87 @@
+# Reusable pkgdown workflow for R packages.
+#
+# Derived from https://github.com/r-lib/actions/tree/v2/examples and used by
+# calling workflows loosely like:
+#
+#   jobs:
+#     pkgdown:
+#       uses: viniciusoike/.github/.github/workflows/pkgdown.yml@main
+#
+# Build and deploy are two jobs on purpose. A job-level `environment:` binds
+# before any step runs and is not affected by step-level `if:`, so a combined
+# job fails on pull requests with "Branch refs/pull/N/merge is not allowed to
+# deploy to github-pages due to environment protection rules" — before it has
+# built anything. Splitting them lets PRs validate the build while only pushes
+# to the default branch touch the github-pages environment.
+#
+# The internal_md_docs step removes internal agent instructions (AGENTS.md,
+# CLAUDE.md, ...) before the build because pkgdown renders every root-level
+# .md into the published site and ignores .Rbuildignore entirely
+# (see pkgdown:::package_mds). Those files would otherwise end up on the
+# public site, in sitemap.xml and in the search index. Deleting them in the
+# runner is safe: they are not part of the package and the checkout is
+# discarded afterwards.
+
+on:
+  workflow_call:
+    inputs:
+      internal_md_docs:
+        description: "Root-level .md files to drop before the site build"
+        type: string
+        default: "CLAUDE.md AGENTS.md"
+
+name: pkgdown
+
+permissions: read-all
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Only restrict concurrency for non-PR jobs
+    concurrency:
+      group: pkgdown-${{ github.event_name != 'pull_request' || github.run_id }}
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::pkgdown, local::.
+          needs: website
+
+      - name: Drop internal agent docs before building
+        run: rm -f ${{ inputs.internal_md_docs }}
+
+      - name: Build site
+        run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
+        shell: Rscript {0}
+
+      - name: Upload artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
